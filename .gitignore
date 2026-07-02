@@ -1,0 +1,18 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Secrets — NEVER commit real keys
+.env
+
+# Local Postgres data (created by docker-compose)
+pgdata/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/

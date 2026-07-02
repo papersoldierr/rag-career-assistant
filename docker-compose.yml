@@ -1,0 +1,19 @@
+# Runs Postgres with the pgvector extension already built in.
+# Start it with:  docker compose up -d
+# Stop it with:   docker compose down   (add -v to also wipe the data volume)
+
+services:
+  db:
+    image: pgvector/pgvector:pg17   # official Postgres 17 image with pgvector preinstalled
+    container_name: rag-career-db
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: ragdb
+    ports:
+      - "5432:5432"                 # expose the DB on localhost:5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # persist data between restarts
+
+volumes:
+  pgdata:

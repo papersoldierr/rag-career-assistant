@@ -1,0 +1,9 @@
+# Pinning is intentionally loose for now; we'll lock versions once it runs.
+
+anthropic          # Claude API client (generation)
+voyageai           # Voyage AI client (embeddings)
+pgvector           # registers the Postgres vector type with our DB driver
+psycopg[binary]    # PostgreSQL driver for Python
+python-dotenv      # loads the .env file into environment variables
+fastapi            # web API layer (added in a later step)
+uvicorn[standard]  # ASGI server that runs the FastAPI app
