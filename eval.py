@@ -18,20 +18,12 @@ DATABASE_URL) and documents already ingested (`python ingest.py`). This script
 only READS — it never changes the database.
 """
 
-from query import retrieve          # reuse the ACTUAL search — we grade the real thing
+# reuse the ACTUAL search (retrieve_by_vector) — we grade the real thing.
+# embed_queries batches all questions into one Voyage call (see below).
+from query import retrieve_by_vector, embed_queries
 from golden_set import GOLDEN
 
-K = 5  # how many chunks retrieve() returns; matches the app's default
-
-
-def sources_for(question, k=K):
-    """Run the real retriever and return just the SET of source filenames it found.
-
-    retrieve() returns (source, content) pairs; for grading recall we only care
-    which files came back, so we collapse it to a set of source names.
-    """
-    results = retrieve(question, k)            # list of (source, content) tuples
-    return {source for source, _ in results}
+K = 5  # how many chunks the search returns; matches the app's default
 
 
 def evaluate(k=K):
@@ -40,13 +32,23 @@ def evaluate(k=K):
     answerable = [g for g in GOLDEN if g["expected_source"] is not None]
     unanswerable = [g for g in GOLDEN if g["expected_source"] is None]
 
+    # Embed EVERY question in a single Voyage request (one call, not one-per-
+    # question), then look each vector up by question text while grading.
+    all_questions = [g["question"] for g in GOLDEN]
+    vec_by_question = dict(zip(all_questions, embed_queries(all_questions)))
+
+    def sources_for(question):
+        """The real DB search on the pre-embedded vector; return the set of sources."""
+        results = retrieve_by_vector(vec_by_question[question], k)
+        return {source for source, _ in results}
+
     hits = 0
     print(f"\n=== Retrieval eval (recall@{k}) ===\n")
 
     for item in answerable:
         question = item["question"]
         expected = item["expected_source"]
-        found = sources_for(question, k)
+        found = sources_for(question)
 
         if expected in found:
             hits += 1
@@ -66,7 +68,7 @@ def evaluate(k=K):
     if unanswerable:
         print("=== Unanswerable (manual check — should retrieve nothing useful) ===")
         for item in unanswerable:
-            found = sources_for(item["question"], k)
+            found = sources_for(item["question"])
             print(f"[?] {item['question']}")
             print(f"    got: {sorted(found)}")
         print()
