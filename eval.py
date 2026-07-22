@@ -11,9 +11,9 @@ What it does:
      real diagnostic: recall@5 can look perfect while recall@1 reveals weak
      ranking. The gap between them is the story worth documenting.
 
-Why recall@k? See HIRING-SIGNAL.md. Short version: if the right document is not
-retrieved, Claude cannot answer from it — so retrieval is the first thing to
-measure, before touching prompts or generation.
+Why recall@k? If the right document is not retrieved, Claude cannot answer from
+it — so retrieval is the first thing to measure, before touching prompts or
+generation.
 
 Why several k's? With only a few documents, recall@5 is easy: retrieving 5 chunks
 from 4 docs almost can't miss. recall@1 asks the harder question — is the right
