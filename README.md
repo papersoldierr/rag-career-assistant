@@ -113,7 +113,51 @@ Response:
 { "answer": "...", "sources": ["resume.md", "project-context.md"] }
 ```
 
+## Evaluation
+
+Getting the pipeline to *run* is table stakes; the real question is whether
+retrieval returns the **right** document. So retrieval is measured directly,
+against a hand-labeled **golden set** ([`golden_set.py`](golden_set.py)) of
+`(question, expected-source)` pairs, using [`eval.py`](eval.py):
+
+```bash
+python eval.py
+```
+
+The metric is **recall@k** — of the top *k* chunks retrieved, does the expected
+document appear? Rather than a single cutoff, the harness sweeps several and
+reports the **rank** at which each question's correct document first shows up,
+because a flattering recall@5 can hide a weak ranking that only recall@1 reveals.
+
+### Results (11 answerable questions)
+
+| Metric     | Score      |
+| ---------- | ---------- |
+| recall@1   | 0.91 (10/11) |
+| recall@3   | 1.00 (11/11) |
+| recall@5   | 1.00 (11/11) |
+
+### A failure the eval caught
+
+recall@3 and @5 are perfect — with only a handful of documents, retrieving 5
+chunks almost can't miss, so those numbers on their own are uninformative.
+**recall@1 is where the real signal is**, and it flagged one question:
+
+> *"What kind of roles is Bayo targeting?"* ranks `resume.md` **above**
+> `career-context.md` (the document that actually answers it).
+
+**Why:** the resume's summary chunk is semantically close to the question and
+out-competes the dedicated career document on pure vector similarity. The right
+answer is still retrieved (so recall@3/@5 stay 1.00), but it isn't ranked first.
+
+**The fix this points to:** pure vector search has no notion of exact-term or
+keyword relevance. Adding **hybrid search** (BM25 keyword matching fused with
+vector search via Reciprocal Rank Fusion) is the standard remedy — and because
+the eval above already exists, its effect can be measured as a before/after
+recall@1 delta rather than guessed at.
+
 ## Status
 
-✅ Command-line pipeline (ingest + query) and FastAPI service both complete.
-Next: add real documents, run end to end, then deploy.
+✅ Command-line pipeline (ingest + query), FastAPI service, and retrieval eval
+harness all complete and running end to end on real documents.
+Next: hybrid search (BM25 + vector) to lift recall@1, then deploy.
