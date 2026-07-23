@@ -131,11 +131,12 @@ because a flattering recall@5 can hide a weak ranking that only recall@1 reveals
 
 ### Results (11 answerable questions)
 
-| Metric     | Score      |
-| ---------- | ---------- |
-| recall@1   | 0.91 (10/11) |
-| recall@3   | 1.00 (11/11) |
-| recall@5   | 1.00 (11/11) |
+`eval.py` compares two retrieval methods on the same golden set:
+
+| Method       | recall@1     | recall@3 | recall@5 |
+| ------------ | ------------ | -------- | -------- |
+| vector-only  | 0.91 (10/11) | 1.00     | 1.00     |
+| hybrid (RRF) | 0.91 (10/11) | 1.00     | 1.00     |
 
 ### A failure the eval caught
 
@@ -146,18 +147,34 @@ chunks almost can't miss, so those numbers on their own are uninformative.
 > *"What kind of roles is Bayo targeting?"* ranks `resume.md` **above**
 > `career-context.md` (the document that actually answers it).
 
-**Why:** the resume's summary chunk is semantically close to the question and
-out-competes the dedicated career document on pure vector similarity. The right
-answer is still retrieved (so recall@3/@5 stay 1.00), but it isn't ranked first.
+### Hybrid search — tried, measured, and what it revealed
 
-**The fix this points to:** pure vector search has no notion of exact-term or
-keyword relevance. Adding **hybrid search** (BM25 keyword matching fused with
-vector search via Reciprocal Rank Fusion) is the standard remedy — and because
-the eval above already exists, its effect can be measured as a before/after
-recall@1 delta rather than guessed at.
+The obvious fix is **hybrid search**: pure vector search has no notion of
+exact-term relevance, so we added Postgres full-text (`tsvector`/`ts_rank`)
+keyword search alongside the vector search and fused the two rankings with
+**Reciprocal Rank Fusion (RRF)**. The eval above measures the effect directly.
+
+**It did not move recall@1** — and the *why* is the interesting part. For the
+failing question the two methods disagree symmetrically:
+
+```
+              vector rank   keyword rank
+resume.md          1             2
+career.md          2             1
+```
+
+RRF sums `1/(k+rank)` across methods, so both chunks score **identically** and
+the tie holds — no equal-weight fusion can break a symmetric swap. That means the
+miss isn't really a keyword problem: `resume.md`'s first chunk is a dense
+"kitchen-sink" summary that out-competes the dedicated career doc on **both**
+semantic *and* keyword grounds. **The real root cause is chunk granularity, not
+the retrieval method** — which points the next fix at chunking (and, after that,
+cross-encoder reranking). Hybrid stays in as the better default architecture; it
+just isn't the lever for *this* miss. See [`RESULTS.md`](RESULTS.md) for the log.
 
 ## Status
 
-✅ Command-line pipeline (ingest + query), FastAPI service, and retrieval eval
-harness all complete and running end to end on real documents.
-Next: hybrid search (BM25 + vector) to lift recall@1, then deploy.
+✅ Command-line pipeline (ingest + query), FastAPI service, retrieval eval
+harness (vector vs hybrid), and hybrid search all complete and running end to end
+on real documents.
+Next: structure-aware chunking to lift recall@1, then cross-encoder reranking.

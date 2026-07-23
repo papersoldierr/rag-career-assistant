@@ -12,7 +12,8 @@ appear?). recall@1 is the real signal — recall@3/@5 saturate fast on a small c
 | Date       | Change                              | recall@1 | recall@3 | recall@5 | Notes |
 | ---------- | ----------------------------------- | -------- | -------- | -------- | ----- |
 | 2026-07-21 | Baseline — vector-only retrieval    | 0.91 (10/11) | 1.00 | 1.00 | Caught a real miss: "what roles is Bayo targeting?" ranks `resume.md` above `career-context.md` (summary chunk out-competes on pure vector similarity). |
-|            | _(next: hybrid BM25 + vector, RRF)_ |          |          |          | Expected to lift recall@1 by ranking the keyword-matching doc higher. |
+| 2026-07-23 | Hybrid search (vector + `tsvector` keyword, RRF fusion) | 0.91 (10/11) | 1.00 | 1.00 | **No change** — and the *why* is the finding. On the failing question the methods disagree symmetrically (resume #1 vec / #2 kw; career #2 vec / #1 kw), so RRF scores them identically (`1/(60+1)+1/(60+2)` both ways) and the tie holds. Equal-weight fusion *cannot* break a symmetric swap. Diagnosis: the miss is a **chunking** artifact (resume's dense summary chunk wins on both axes), not a keyword-relevance gap. Hybrid kept as the better default architecture. |
+|            | _(next: structure-aware chunking — split the resume summary chunk)_ |          |          |          | Hypothesis: finer chunks stop the resume summary from out-competing the dedicated career doc on both axes. |
 
 ## How to use this
 1. Run `python eval.py`, note recall@1/@3/@5.
