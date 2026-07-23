@@ -23,6 +23,11 @@ def chunk_text(text, chunk_size=800, overlap=150):
     Why chunk? Embeddings capture the meaning of a *passage*; a whole document is
     too broad to retrieve precisely. Why overlap? So a sentence split across a
     boundary still appears whole in one of the chunks, and we don't lose context.
+
+    NOTE: a paragraph-aware variant (chunk_size=500, split on blank lines) was
+    tried on 2026-07-23 to fix a recall@1 miss. It did NOT help (headline hybrid
+    recall@1 unchanged at 0.91) and regressed vector-only 0.91 -> 0.82, so it was
+    reverted. See RESULTS.md. The real next lever is cross-encoder reranking.
     """
     chunks = []
     start = 0

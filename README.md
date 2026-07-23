@@ -177,4 +177,5 @@ just isn't the lever for *this* miss. See [`RESULTS.md`](RESULTS.md) for the log
 ✅ Command-line pipeline (ingest + query), FastAPI service, retrieval eval
 harness (vector vs hybrid), and hybrid search all complete and running end to end
 on real documents.
-Next: structure-aware chunking to lift recall@1, then cross-encoder reranking.
+Next: cross-encoder reranking. (Paragraph-aware chunking was tried and reverted —
+a measured negative result; see [`RESULTS.md`](RESULTS.md).)
