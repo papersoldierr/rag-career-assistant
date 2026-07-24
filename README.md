@@ -1,13 +1,21 @@
 # RAG Career Assistant
 
 A retrieval-augmented question-answering service over my own career documents
-(resume, project notes, context docs). Ask it "What has Bayo built with
-Postgres?" and it retrieves the most relevant passages from my documents and has
+(resume, project notes, context docs). Ask it *"What has Bayo built with
+Postgres?"* and it retrieves the most relevant passages from my documents and has
 Claude answer **grounded in those passages** — citing which document each answer
-came from.
+came from, and saying *"I don't know"* when the documents don't cover it.
 
-Built in real code (Python + FastAPI + Postgres/pgvector + Claude API) rather
-than a no-code tool, to demonstrate the full retrieval pipeline end to end.
+**Stack:** Python · FastAPI · PostgreSQL/pgvector (Supabase) · Voyage embeddings ·
+Claude API — built in real code rather than a no-code tool, to demonstrate the
+full retrieval pipeline end to end.
+
+**What makes it more than a demo:** retrieval quality is *measured, not assumed*.
+A [`recall@k` evaluation harness](#evaluation) grades retrieval against a
+hand-labeled golden set, and the results log documents a real failure the eval
+caught — plus three retrieval upgrades (hybrid search, chunking, reranking) that
+were each measured and, honestly, *declined* because they didn't earn their place
+on this corpus.
 
 ## What is RAG?
 
@@ -175,6 +183,33 @@ question correctly). **The engineering decision was to keep the simpler hybrid
 pipeline and *not* ship complexity that didn't earn its place.** All three methods
 stay in the code and the `eval.py` comparison, ready for a corpus that needs them.
 See [`RESULTS.md`](RESULTS.md) for the full log.
+
+## When (not) to use RAG
+
+RAG earns its cost when the answer lives in a **large, changing, unstructured**
+body of text — you need to *find* the relevant passage before an LLM can phrase a
+grounded answer. It's the wrong tool, or overkill, when:
+
+- **A deterministic lookup already answers it.** If the answer is a structured
+  field — a price, an order status, a record by ID — a plain SQL query or API call
+  is cheaper, faster, and *exact*. Don't embed what you can `SELECT`.
+- **The knowledge is small and static.** If all the content fits comfortably in the
+  context window and rarely changes, just put it in the prompt. Retrieval only adds
+  latency and new failure modes (bad chunking, missed retrieval) for no gain.
+- **The question needs aggregation or completeness.** RAG retrieves the top-*k*
+  passages — a *sample*, not the whole set. "How many X?" or "list every Y" belong
+  in SQL/analytics; a top-k retriever will confidently answer from a partial view.
+- **The data is real-time or transactional.** For live state (inventory, balances),
+  query the source of truth directly — an embedding index is a stale snapshot.
+- **Wrong-but-plausible is unacceptable and unrecoverable.** Retrieval can miss;
+  if the domain can't tolerate a grounded-looking-but-incomplete answer, favor a
+  deterministic path or human review.
+
+The through-line with the evaluation above: **match the tool to the problem.** RAG
+over a handful of clean documents is already near-overkill (a smaller prompt-stuffing
+approach would work too) — this project uses it because *demonstrating the retrieval
+pipeline end-to-end* is the point. Knowing when a cheaper deterministic path wins is
+the same judgment as knowing when *not* to add reranking.
 
 ## Status
 
