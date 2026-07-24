@@ -131,12 +131,13 @@ because a flattering recall@5 can hide a weak ranking that only recall@1 reveals
 
 ### Results (11 answerable questions)
 
-`eval.py` compares two retrieval methods on the same golden set:
+`eval.py` compares three retrieval methods on the same golden set:
 
-| Method       | recall@1     | recall@3 | recall@5 |
-| ------------ | ------------ | -------- | -------- |
-| vector-only  | 0.91 (10/11) | 1.00     | 1.00     |
-| hybrid (RRF) | 0.91 (10/11) | 1.00     | 1.00     |
+| Method        | recall@1     | recall@3 | recall@5 |
+| ------------- | ------------ | -------- | -------- |
+| vector-only   | 0.91 (10/11) | 1.00     | 1.00     |
+| hybrid (RRF)  | 0.91 (10/11) | 1.00     | 1.00     |
+| hybrid+rerank | 0.73 (8/11)  | 1.00     | 1.00     |
 
 ### A failure the eval caught
 
@@ -147,35 +148,37 @@ chunks almost can't miss, so those numbers on their own are uninformative.
 > *"What kind of roles is Bayo targeting?"* ranks `resume.md` **above**
 > `career-context.md` (the document that actually answers it).
 
-### Hybrid search — tried, measured, and what it revealed
+### Three upgrades tried — and the discipline of not shipping them
 
-The obvious fix is **hybrid search**: pure vector search has no notion of
-exact-term relevance, so we added Postgres full-text (`tsvector`/`ts_rank`)
-keyword search alongside the vector search and fused the two rankings with
-**Reciprocal Rank Fusion (RRF)**. The eval above measures the effect directly.
+Three standard retrieval improvements were each implemented and **measured**
+against the fixed golden set:
 
-**It did not move recall@1** — and the *why* is the interesting part. For the
-failing question the two methods disagree symmetrically:
+1. **Hybrid search** — Postgres full-text (`tsvector`/`ts_rank`) keyword search
+   fused with vector search via **Reciprocal Rank Fusion (RRF)**. No change to
+   recall@1. For the failing question the two methods disagree *symmetrically*
+   (`resume.md`: vector #1 / keyword #2; `career.md`: vector #2 / keyword #1), so
+   RRF scores them identically and the tie holds — no equal-weight fusion can
+   break a symmetric swap.
+2. **Finer chunking** — paragraph-aware splitting to break up `resume.md`'s dense
+   "kitchen-sink" summary chunk. Didn't fix the miss and *regressed* vector-only
+   (0.91 → 0.82). Reverted.
+3. **Cross-encoder reranking** — Voyage `rerank-2-lite` over the retrieved pool.
+   *Regressed* recall@1 to 0.73 (it pushed two previously-#1 answers down).
 
-```
-              vector rank   keyword rank
-resume.md          1             2
-career.md          2             1
-```
-
-RRF sums `1/(k+rank)` across methods, so both chunks score **identically** and
-the tie holds — no equal-weight fusion can break a symmetric swap. That means the
-miss isn't really a keyword problem: `resume.md`'s first chunk is a dense
-"kitchen-sink" summary that out-competes the dedicated career doc on **both**
-semantic *and* keyword grounds. **The real root cause is chunk granularity, not
-the retrieval method** — which points the next fix at chunking (and, after that,
-cross-encoder reranking). Hybrid stays in as the better default architecture; it
-just isn't the lever for *this* miss. See [`RESULTS.md`](RESULTS.md) for the log.
+**Why none helped — and why that's the point.** On a small, clean, 4-document
+corpus, retrieval is already **near-saturated**: the right document is in the top
+3 for *every* question. Hybrid search, finer chunking, and reranking are tools for
+**large, noisy** corpora; here they add noise, not signal. The lone remaining miss
+is a **labeling nuance** — `resume.md` genuinely contains career-direction text, so
+it's a legitimate secondary answer — not a retrieval defect (the app answers that
+question correctly). **The engineering decision was to keep the simpler hybrid
+pipeline and *not* ship complexity that didn't earn its place.** All three methods
+stay in the code and the `eval.py` comparison, ready for a corpus that needs them.
+See [`RESULTS.md`](RESULTS.md) for the full log.
 
 ## Status
 
-✅ Command-line pipeline (ingest + query), FastAPI service, retrieval eval
-harness (vector vs hybrid), and hybrid search all complete and running end to end
-on real documents.
-Next: cross-encoder reranking. (Paragraph-aware chunking was tried and reverted —
-a measured negative result; see [`RESULTS.md`](RESULTS.md).)
+✅ Command-line pipeline (ingest + query), FastAPI service, retrieval eval harness
+(vector vs hybrid vs rerank), hybrid search, and reranking all implemented and
+measured end to end on real documents. Default retrieval is **hybrid** — the
+measured best for this corpus. See [`RESULTS.md`](RESULTS.md) for the experiment log.

@@ -3,23 +3,33 @@ answer using only those chunks.
 
 Run it:  python query.py "What has Bayo built with Postgres?"
 
-Flow:
-  question -> hybrid retrieval (vector + keyword, fused by RRF) -> Claude answer
+Flow (default):
+  question -> hybrid retrieval (vector + keyword, RRF) -> Claude answer
 
-Retrieval is HYBRID: it runs two searches and fuses them.
+HYBRID RETRIEVAL fuses two searches into one candidate ranking:
   - vector search:  semantic similarity (meaning) via pgvector
-  - keyword search: exact-term relevance (tsvector/ts_rank) via Postgres full-text
-Vector search alone misses exact terms (a name, a literal phrase like "roles I'm
-targeting"); keyword search alone misses paraphrases. Reciprocal Rank Fusion
-combines the two ranked lists so a chunk that either method likes rises to the top.
+  - keyword search: exact-term relevance (tsvector/ts_rank) via Postgres FTS
+  Reciprocal Rank Fusion (RRF) merges the two ranked lists.
+
+A cross-encoder RERANK stage (retrieve_reranked) is also implemented — the
+standard "retrieve wide, then rerank narrow" pattern — but it is NOT the default:
+on this small, clean corpus it measured worse than plain hybrid (see eval.py /
+RESULTS.md). It's kept for the comparison and for larger, noisier corpora.
 """
 
 import sys
+import time
 
 import anthropic
 import voyageai
 
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, EMBED_MODEL, VOYAGE_API_KEY
+from config import (
+    ANTHROPIC_API_KEY,
+    CLAUDE_MODEL,
+    EMBED_MODEL,
+    RERANK_MODEL,
+    VOYAGE_API_KEY,
+)
 from db import connect
 
 vo = voyageai.Client(api_key=VOYAGE_API_KEY)
@@ -129,8 +139,56 @@ def retrieve_hybrid(question, qvec, k=5, pool=20):
     return [(source, content) for _id, source, content in fused[:k]]
 
 
+def rerank(question, candidates, k):
+    """Re-score candidate chunks with Voyage's cross-encoder reranker; keep top k.
+
+    Embedding search compares the question and a chunk as two SEPARATE vectors.
+    A cross-encoder instead reads the question and chunk TOGETHER and scores how
+    well the chunk answers the question — more accurate, but too slow to run over
+    the whole corpus, so we only apply it to a shortlist (`candidates`).
+
+    `candidates` is an ordered list of (id, source, content). Voyage's reranker
+    takes the raw texts and returns results with the original `.index` and a
+    `.relevance_score`, best first — we map those indices back to our tuples.
+    """
+    if not candidates:
+        return []
+    texts = [content for _id, _source, content in candidates]
+    # Voyage's free tier is rate-limited (3 req/min without a payment method).
+    # Wait out the window and retry rather than crash. Adding a payment method
+    # (still free — the token allowance is unchanged) removes the wait.
+    for attempt in range(6):
+        try:
+            result = vo.rerank(question, texts, model=RERANK_MODEL, top_k=k)
+            return [candidates[r.index] for r in result.results]
+        except voyageai.error.RateLimitError:
+            if attempt == 5:
+                raise
+            time.sleep(21)
+
+
+def retrieve_reranked(question, qvec, k=5, pool=20):
+    """Full retrieval pipeline: hybrid-retrieve a pool, then cross-encoder rerank.
+
+    Retrieval (vector + keyword) casts a wide, cheap net to pull `pool` plausible
+    chunks; the reranker then does the accurate, expensive scoring on just those.
+    """
+    fused = reciprocal_rank_fusion(
+        [vector_search(qvec, pool), keyword_search(question, pool)]
+    )
+    reranked = rerank(question, fused[:pool], k)
+    return [(source, content) for _id, source, content in reranked]
+
+
 def retrieve(question, k=5):
-    """The app's default retrieval: embed the question, then hybrid-search."""
+    """The app's default retrieval: embed the question, then hybrid-search.
+
+    NOTE: reranking (retrieve_reranked) is implemented and compared in eval.py, but
+    it is deliberately NOT the default here. On this small, clean corpus it measured
+    WORSE (recall@1 0.91 -> 0.73) — retrieval is already near-saturated, so the
+    cross-encoder adds noise rather than signal. Kept for the comparison and for
+    when the corpus grows large/noisy enough to benefit. See RESULTS.md.
+    """
     return retrieve_hybrid(question, embed_query(question), k)
 
 

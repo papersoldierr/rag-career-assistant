@@ -20,7 +20,7 @@ Prerequisites: a filled-in .env (API keys + DATABASE_URL) and documents already
 ingested (`python ingest.py`). This script only READS — it never writes.
 """
 
-from query import embed_queries, retrieve_vector, retrieve_hybrid
+from query import embed_queries, retrieve_vector, retrieve_hybrid, retrieve_reranked
 from golden_set import GOLDEN
 
 K_VALUES = [1, 3, 5]        # report recall at each of these cutoffs
@@ -31,6 +31,7 @@ RETRIEVE_N = max(K_VALUES)  # retrieve enough chunks to evaluate the largest k
 METHODS = {
     "vector-only": lambda question, qvec: retrieve_vector(qvec, RETRIEVE_N),
     "hybrid (RRF)": lambda question, qvec: retrieve_hybrid(question, qvec, RETRIEVE_N),
+    "hybrid+rerank": lambda question, qvec: retrieve_reranked(question, qvec, RETRIEVE_N),
 }
 
 
@@ -79,25 +80,17 @@ def evaluate(k_values=K_VALUES):
             line += f"{recall[name][k]:.2f}".rjust(11)
         print(line)
 
-    # Per-question rank comparison, so you can see EXACTLY which questions moved.
-    # (Only meaningful with 2+ methods; assumes vector-only vs hybrid here.)
+    # Per-question rank of the expected doc, one column per method, so you can
+    # see exactly which questions each method ranks #1 (lower is better).
     names = list(METHODS)
-    if len(names) == 2:
-        a, b = names
-        print(f"\nPer-question rank of the expected doc ({a} -> {b}; lower is better):")
-        for item in answerable:
-            q = item["question"]
-            ra, rb = ranks[a][q], ranks[b][q]
-            if ra == rb:
-                tag = ""
-            elif rb is None:
-                tag = "  REGRESSED (dropped out)"
-            elif ra is None or rb < ra:
-                tag = "  <- IMPROVED"
-            else:
-                tag = "  <- regressed"
-            fa, fb = (ra if ra else "-"), (rb if rb else "-")
-            print(f"  {q:52}  {fa} -> {fb}{tag}")
+    print("\nPer-question rank of the expected doc (lower is better; 1 = ranked first):")
+    print("  " + "question".ljust(52) + "".join(n.rjust(15) for n in names))
+    for item in answerable:
+        q = item["question"]
+        cells = "".join(
+            str(ranks[n][q] if ranks[n][q] is not None else "-").rjust(15) for n in names
+        )
+        print(f"  {q:52}{cells}")
 
     # Unanswerable questions: no score, just eyeball what surfaced under hybrid.
     # The real test (Claude refuses to answer) lives in query.py, not here.

@@ -22,3 +22,8 @@ EMBED_DIM = 1024  # MUST match the model's output size — it's the size of our 
 
 # Generation model (writes the answer). Haiku is plenty for grounded Q&A and the cheapest tier.
 CLAUDE_MODEL = "claude-haiku-4-5"
+
+# Reranker (cross-encoder). Re-scores a shortlist of retrieved chunks by reading
+# the question and each chunk TOGETHER — more accurate than embedding similarity,
+# so we only run it on the top candidates. rerank-2-lite is Voyage's small/cheap tier.
+RERANK_MODEL = "rerank-2-lite"
